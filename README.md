@@ -10,7 +10,7 @@ This is the full locally runnable reconstruction of the Copilot Page.
 4. Run `npm run dev`.
 5. Open the address printed by Vite, usually `http://localhost:5173`.
 6. Keep the development server running while using the app.
-
+<img src="https://github.com/uttam1233/Advanced_Degree_Pkg_Manager_System/blob/main/Screenshot%202026-10-21%20030906.png">
 ## Important
 
 - Study data, uploaded files, and images inside notes are stored in a local SQLite database under the operating system's application data directory (on Windows, `%LOCALAPPDATA%\DegreeStudyManager\degree-study-manager.sqlite`).
