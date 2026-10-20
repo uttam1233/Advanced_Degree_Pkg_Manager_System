@@ -1,0 +1,35 @@
+.practice-overlay{position:fixed;inset:0;z-index:110;display:grid;place-items:center;padding:18px;background:#020617d9}
+.practice-window{width:min(1440px,100%);height:min(900px,100%);min-height:0;display:flex;flex-direction:column;overflow:hidden;border:1px solid #334155;border-radius:16px;background:#0b1120;color:#e2e8f0;box-shadow:0 24px 80px #0009}
+.practice-header,.practice-toolbar,.practice-panel-heading{display:flex;align-items:center;gap:12px}
+.practice-header{justify-content:space-between;padding:12px 18px;background:#111827;border-bottom:1px solid #334155}
+.practice-title{display:flex;align-items:center;gap:11px}
+.practice-title>svg{width:24px;height:24px;color:#a5b4fc}
+.practice-title h2{margin:0;font-size:18px}
+.practice-title small{display:block;margin-top:3px;color:#94a3b8}
+.practice-toolbar{min-height:58px;padding:9px 14px;flex-wrap:wrap;background:#111827;border-bottom:1px solid #334155}
+.practice-toolbar label{display:flex;align-items:center;gap:8px;font-size:13px}
+.practice-toolbar .control{color:#0f172a}
+.practice-toolbar .practice-filename-label{flex:1;min-width:220px;max-width:520px}
+.practice-toolbar .practice-filename-label input{min-width:0}
+.practice-cwd{min-width:0;margin-left:auto;color:#94a3b8;font:12px ui-monospace,SFMono-Regular,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.practice-workspace{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.practice-editor-panel,.practice-terminal-panel{min-width:0;min-height:0;display:flex;flex-direction:column}
+.practice-editor-panel{border-right:1px solid #334155}
+.practice-panel-heading{min-height:42px;padding:8px 12px;background:#172033;color:#cbd5e1;font-size:13px}
+.practice-panel-heading svg{width:16px;height:16px;color:#a5b4fc}
+.practice-panel-heading span{margin-left:auto;color:#94a3b8;font-size:11px}
+.practice-panel-heading button{margin-left:auto;border:0;background:none;color:#94a3b8;cursor:pointer}
+.practice-editor{flex:1;width:100%;min-height:0;resize:none;border:0;outline:none;padding:16px;background:#0b1120;color:#e2e8f0;font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:4;white-space:pre;overflow:auto}
+.practice-output{flex:1;min-height:0;overflow:auto;padding:12px;background:#070b13;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
+.practice-entry{margin:0 0 10px;white-space:pre-wrap;overflow-wrap:anywhere}
+.practice-entry.command{color:#a5b4fc}
+.practice-entry.output{color:#e2e8f0}
+.practice-entry.system{color:#94a3b8}
+.practice-entry.error{color:#fca5a5}
+.practice-command-form{display:flex;align-items:center;gap:9px;padding:9px 10px;background:#111827;border-top:1px solid #334155}
+.practice-command-form>span{color:#a5b4fc;font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+.practice-command-form input{flex:1;min-width:0;border:0;outline:none;background:transparent;color:#e2e8f0;font:13px ui-monospace,SFMono-Regular,Consolas,monospace}
+.practice-command-form .btn{padding:8px}
+.practice-warning{display:flex;align-items:center;gap:9px;padding:9px 14px;background:#422006;color:#fde68a;font-size:12px}
+.practice-warning svg{width:17px;height:17px;flex:none}
+@media(max-width:760px){.practice-overlay{padding:0}.practice-window{width:100%;height:100%;border:0;border-radius:0}.practice-workspace{grid-template-columns:1fr;grid-template-rows:minmax(220px,1fr) minmax(220px,1fr)}.practice-editor-panel{border-right:0;border-bottom:1px solid #334155}.practice-toolbar{gap:8px}.practice-cwd{width:100%;margin-left:0}.practice-warning{align-items:flex-start}}

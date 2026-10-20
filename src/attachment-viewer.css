@@ -1,0 +1,45 @@
+.attachment-viewer{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;background:#080b14;color:white}
+.attachment-viewer-toolbar{min-height:64px;padding:10px 18px;display:flex;align-items:center;justify-content:space-between;gap:14px;background:#111827;border-bottom:1px solid #ffffff20}
+.attachment-viewer-toolbar strong,.attachment-viewer-toolbar small{display:block}
+.attachment-viewer-toolbar small{margin-top:3px;color:#cbd5e1}
+.attachment-viewer-toolbar .row{flex-wrap:wrap;justify-content:flex-end}
+.attachment-viewer-content{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:16px}
+.pdf-viewer{padding:0;background:#334155}
+.attachment-pdf{width:100%;height:100%;border:0;background:white}
+.image-viewer{overflow:auto;background:#080b14}
+.attachment-image{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:4px;box-shadow:0 16px 48px #0008}
+.file-viewer{display:block;overflow:auto;background:#0f172a}
+.attachment-text{max-width:1100px;margin:0 auto;padding:24px;color:#e2e8f0;font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.notebook-preview{max-width:1100px;margin:0 auto;padding:18px;display:grid;gap:12px}
+.notebook-cell{overflow:hidden;border:1px solid #334155;border-radius:10px;background:#111827}
+.notebook-cell>strong{display:block;padding:9px 12px;color:#c7d2fe;background:#1e293b;font-size:12px;text-transform:uppercase}
+.notebook-cell pre{margin:0;padding:14px;color:#e2e8f0;font:13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}
+.notebook-cell>.notebook-code{max-height:320px;overflow:auto;white-space:pre;overflow-wrap:normal;overscroll-behavior:contain}
+.notebook-markdown{padding:14px;color:#e2e8f0;line-height:1.7;overflow-wrap:anywhere}
+.notebook-markdown>:first-child{margin-top:0}
+.notebook-markdown>:last-child{margin-bottom:0}
+.notebook-markdown h1,.notebook-markdown h2,.notebook-markdown h3,.notebook-markdown h4,.notebook-markdown h5,.notebook-markdown h6{margin:1em 0 .5em;color:#f8fafc}
+.notebook-markdown p,.notebook-markdown ul,.notebook-markdown ol{margin:.6em 0}
+.notebook-markdown a{color:#a5b4fc}
+.notebook-markdown code{padding:2px 5px;border-radius:4px;background:#334155;font: .92em ui-monospace,SFMono-Regular,Consolas,monospace}
+.notebook-markdown-code{overflow:auto;padding:12px;border-radius:8px;background:#020617}
+.notebook-markdown-code code{padding:0;background:none}
+.notebook-markdown-image,.notebook-output-image{display:block;max-width:100%;height:auto;margin:12px 0;border-radius:6px}
+.notebook-output{max-height:320px;overflow:auto;overscroll-behavior:contain;padding:10px 14px;border-top:1px solid #334155;background:#0b1220}
+.notebook-output pre{max-height:none;padding:0;background:transparent;white-space:pre;overflow-wrap:normal}
+.attachment-file-message{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#cbd5e1;text-align:center}
+.attachment-file-message svg{width:40px;height:40px}
+.attachment-file-message strong{color:white}
+.note-editor-shell{position:relative;min-width:0}
+.note-editor-shell .editor{max-width:100%}
+.note-inline-image{display:inline-block;max-width:100%;height:auto;vertical-align:middle;cursor:pointer}
+.note-image-resize-handle{position:absolute;z-index:3;width:16px;height:16px;padding:0;border:2px solid white;border-radius:4px;background:#4f46e5;box-shadow:0 1px 5px #0f172a80;cursor:nwse-resize;touch-action:none}
+.note-view img{max-width:100%;height:auto;vertical-align:middle;border-radius:6px}
+.toast-retry{cursor:pointer}
+.syllabus-menu-wrap{position:relative;flex:none}
+.syllabus-menu-trigger{min-width:40px;padding:9px}
+.syllabus-menu{position:absolute;z-index:20;top:calc(100% + 6px);right:0;min-width:148px;padding:5px;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 10px 28px #0f172a24}
+.syllabus-menu .btn{width:100%;justify-content:flex-start;padding:9px 10px;color:#334155}
+.syllabus-menu .btn:hover{background:#f1f5f9;filter:none}
+.syllabus-menu .btn:last-child{color:#b91c1c}
+@media(max-width:600px){.attachment-viewer-toolbar{min-height:58px;padding:8px 12px;align-items:flex-start;flex-direction:column}.attachment-viewer-content{padding:10px}.attachment-viewer-toolbar .row{justify-content:flex-start}}

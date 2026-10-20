@@ -1,0 +1,205 @@
+.jupyter-window {
+ --surface:#f8fafc;
+ --panel:#fff;
+ --text:#0f172a;
+ --muted:#64748b;
+ --border:#cbd5e1;
+ --divider:#e2e8f0;
+ --editor:#f8fafc;
+ --accent:#4f46e5;
+ --accent-text:#fff;
+ --output:#1e293b;
+ --input-output:#4f46e5;
+ --error:#b91c1c;
+ --footer:#fffbeb;
+ --footer-text:#92400e;
+ width:min(1600px,96vw);
+ height:min(900px,96vh);
+ min-height:0;
+ display:flex;
+ flex-direction:column;
+ overflow:hidden;
+ border:1px solid var(--border);
+ border-radius:14px;
+ background:var(--surface);
+ color:var(--text);
+ box-shadow:0 24px 80px #0009
+}
+.jupyter-window[data-theme="dark"] {
+ --surface:#0f172a;
+ --panel:#111827;
+ --text:#e5e7eb;
+ --muted:#94a3b8;
+ --border:#334155;
+ --divider:#263244;
+ --editor:#0b1220;
+ --accent:#818cf8;
+ --accent-text:#111827;
+ --output:#d1d5db;
+ --input-output:#a5b4fc;
+ --error:#fca5a5;
+ --footer:#422006;
+ --footer-text:#fde68a
+}
+.jupyter-window[data-theme="solarized"] {
+ --surface:#fdf6e3;
+ --panel:#eee8d5;
+ --text:#586e75;
+ --muted:#839496;
+ --border:#d6cdb8;
+ --divider:#e3dcc8;
+ --editor:#fdf6e3;
+ --accent:#268bd2;
+ --accent-text:#fff;
+ --output:#586e75;
+ --input-output:#6c71c4;
+ --error:#dc322f;
+ --footer:#eee8d5;
+ --footer-text:#b58900
+}
+.jupyter-window[data-theme="monokai"] {
+ --surface:#272822;
+ --panel:#2f302a;
+ --text:#f8f8f2;
+ --muted:#a6a69c;
+ --border:#49483e;
+ --divider:#3b3c33;
+ --editor:#272822;
+ --accent:#a6e22e;
+ --accent-text:#272822;
+ --output:#f8f8f2;
+ --input-output:#66d9ef;
+ --error:#f92672;
+ --footer:#3b3c33;
+ --footer-text:#e6db74
+}
+.jupyter-overlay {
+ position:fixed;
+ inset:0;
+ z-index:125;
+ display:grid;
+ place-items:center;
+ padding:12px;
+ background:#020617d9
+}
+.app .toast {z-index:200}
+.jupyter-header,.jupyter-toolbar {
+ display:flex;
+ align-items:center;
+ gap:12px;
+ flex-wrap:wrap;
+ padding:12px 16px;
+ background:var(--panel);
+ border-bottom:1px solid var(--divider)
+}
+.jupyter-header {justify-content:space-between}
+.jupyter-header-actions {display:flex;align-items:center;gap:8px}
+.jupyter-header-actions .jupyter-files-label {display:flex;align-items:center;gap:7px;color:var(--text);font-size:12px;font-weight:600;white-space:nowrap}
+.jupyter-header-actions select {max-width:min(220px,24vw)}
+.jupyter-header h2 {margin:0;font-size:18px}
+.jupyter-header span,.jupyter-kernel-status {color:var(--muted);font-size:12px}
+.jupyter-header button,.jupyter-toolbar button,.jupyter-cell-toolbar button,.jupyter-add-cell button,.jupyter-input-form button {
+ display:inline-flex;
+ align-items:center;
+ gap:6px;
+ border:1px solid var(--border);
+ border-radius:8px;
+ background:var(--panel);
+ color:var(--text);
+ padding:8px 10px;
+ font:inherit;
+ cursor:pointer
+}
+.jupyter-header button svg,.jupyter-toolbar button svg,.jupyter-cell-toolbar button svg,.jupyter-add-cell button svg {width:15px;height:15px}
+.jupyter-toolbar {gap:10px}
+.jupyter-toolbar label {display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600}
+.jupyter-toolbar input,.jupyter-toolbar select,.jupyter-cell-toolbar select,.jupyter-input-form input {
+ min-width:0;
+ border:1px solid var(--border);
+ border-radius:8px;
+ padding:8px;
+ background:var(--panel);
+ color:var(--text);
+ font:inherit
+}
+.jupyter-name {flex:1;min-width:220px}
+.jupyter-name input {flex:1}
+.jupyter-kernel select {max-width:260px}
+.jupyter-theme select {max-width:180px}
+.jupyter-header-actions>.jupyter-delete-file {background:#fff;border-color:#fecaca;color:#b91c1c}
+.jupyter-header-actions>.jupyter-delete-file:disabled {opacity:.55;cursor:not-allowed}
+.jupyter-kernel-status {flex:1}
+.jupyter-kernel-status.ready {color:#047857}
+.jupyter-kernel-status.error,.jupyter-kernel-status.unavailable {color:var(--error)}
+.jupyter-toolbar>button {background:var(--accent);border-color:var(--accent);color:var(--accent-text);font-weight:600}
+.jupyter-heading {display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.jupyter-heading>div {display:grid;gap:3px}
+.jupyter-upload-status {max-width:min(640px,55vw);overflow:hidden;border:1px solid #86efac;border-radius:8px;background:#f0fdf4;padding:7px 11px;color:#166534;font-size:12px;font-weight:600;text-overflow:ellipsis;white-space:nowrap}
+.jupyter-window .jupyter-cells {display:block;flex:1 1 0;width:100%;max-width:none;min-height:0;margin:0;overflow:auto;overflow-anchor:none;padding:18px 2.5vw}
+.jupyter-window .jupyter-cell {display:block;width:100%;min-width:0;margin:0 0 22px;overflow-anchor:none;border:1px solid var(--border);border-radius:10px;background:var(--panel);box-shadow:0 1px 3px #0f172a0b}
+.jupyter-cell.running {border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 28%,transparent)}
+.jupyter-cell-toolbar {display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--divider);color:var(--muted);font:12px ui-monospace,SFMono-Regular,Consolas,monospace}
+.jupyter-cell-toolbar>span {min-width:56px}
+.jupyter-cell-toolbar select {padding:5px 7px;font-size:12px}
+.jupyter-cell-toolbar button {padding:5px 8px;font-size:12px}
+.jupyter-cell-toolbar button:disabled {opacity:.55;cursor:not-allowed}
+.jupyter-cell-toolbar button:last-child {margin-left:auto}
+.jupyter-cell>textarea {
+ display:block;
+ box-sizing:border-box;
+ width:100%;
+ min-height:42px;
+ resize:none;
+ overflow:hidden;
+ border:0;
+ outline:0;
+ padding:10px 16px;
+ background:var(--editor);
+ color:var(--text);
+ font:13px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;
+ tab-size:4;
+ white-space:pre-wrap;
+ overflow-wrap:anywhere
+}
+.jupyter-cell-outputs {
+ box-sizing:border-box;
+ max-height:min(42vh,460px);
+ overflow:auto;
+ overflow-anchor:none;
+ padding:8px 16px 14px;
+ border-top:1px solid var(--divider);
+ color:var(--output)
+}
+.jupyter-cell-outputs pre {width:max-content;min-width:100%;margin:7px 0;white-space:pre;font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace}
+.jupyter-stream,.jupyter-input-echo,.jupyter-result {color:var(--output)}
+.jupyter-input-echo {color:var(--input-output)}
+.jupyter-error {color:var(--error)}
+.jupyter-output-image {display:block;max-width:min(100%,700px);max-height:520px;object-fit:contain;margin:8px 0}
+.jupyter-markdown {padding:2px 16px 12px;line-height:1.6}
+.jupyter-markdown h1,.jupyter-markdown h2,.jupyter-markdown h3,.jupyter-markdown h4,.jupyter-markdown h5,.jupyter-markdown h6 {margin:9px 0}
+.jupyter-markdown p {margin:4px 0}
+.jupyter-markdown-list {padding-left:18px}
+.jupyter-add-cell {display:flex;gap:7px;padding:8px 10px;border-top:1px solid var(--divider)}
+.jupyter-add-cell button {padding:5px 8px;font-size:12px;color:var(--muted)}
+.jupyter-input-form {display:flex;align-items:end;gap:9px;padding:10px 16px;background:var(--panel);border-top:1px solid var(--divider)}
+.jupyter-input-form label {flex:1;display:grid;gap:5px;color:var(--text);font-size:13px}
+.jupyter-input-form input {width:100%}
+.jupyter-input-form button {background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+.jupyter-message {padding:11px 14px;border-radius:8px;margin-bottom:12px;font-size:13px}
+.jupyter-message.error {background:#fee2e2;color:#991b1b}
+.jupyter-file-input {display:none}
+.jupyter-footer {padding:9px 16px;background:var(--footer);color:var(--footer-text);font-size:12px}
+.jupyter-footer code {font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+@media(max-width:760px) {
+ .jupyter-overlay {padding:0}
+ .jupyter-window {width:100%;height:100%;border:0;border-radius:0}
+ .jupyter-window .jupyter-cells {padding:12px}
+ .jupyter-upload-status {max-width:calc(100vw - 48px)}
+ .jupyter-kernel,.jupyter-theme {width:100%}
+ .jupyter-kernel select,.jupyter-theme select {max-width:none;flex:1}
+ .jupyter-header {align-items:flex-start}
+ .jupyter-header-actions {flex-wrap:wrap;justify-content:flex-end}
+ .jupyter-header-actions .jupyter-files-label {flex-wrap:wrap}
+ .jupyter-header-actions select {max-width:40vw}
+ .jupyter-kernel-status {width:100%}
+}

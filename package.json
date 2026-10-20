@@ -1,0 +1,24 @@
+{
+  "name": "degree-study-manager-full",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"node server.js\" \"vite\"",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "lucide-react": "latest",
+    "framer-motion": "latest",
+    "better-sqlite3": "latest"
+  },
+  "devDependencies": {
+    "concurrently": "latest"
+  }
+}
