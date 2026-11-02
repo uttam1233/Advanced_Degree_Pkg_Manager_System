@@ -11,7 +11,7 @@ database with the native Rust desktop process over private Tauri IPC. Startup
 loads a cached metadata index instead of transferring every attachment,
 rich-text body, and notebook cell. Full note/file contents are read on demand
 when opened, while backups still include all saved data.
-https://github.com/uttam1233/Advanced_Degree_Pkg_Manager_System/blob/main/Screenshot%202026-10-21%20030906.png
+<img src="https://github.com/uttam1233/Advanced_Degree_Pkg_Manager_System/blob/main/Screenshot%202026-10-21%20030906.png">
 Existing databases
 build this index once on the first launch after the update; later launches reuse
 it. The app does not start a Node server, open a localhost listener, show a
