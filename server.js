@@ -1,11 +1,13 @@
 import {createServer} from "node:http";
+import {Readable, Writable} from "node:stream";
 import {spawn, spawnSync} from "node:child_process";
-import {createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync} from "node:fs";
+import {createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync} from "node:fs";
 import {randomUUID} from "node:crypto";
 import {delimiter, dirname, extname, join, normalize, resolve, sep} from "node:path";
 import {tmpdir} from "node:os";
 import {fileURLToPath} from "node:url";
 import Database from "better-sqlite3";
+import {buildNotebookTerminalCommand,createJupyterRuntime,findAlacrittyWithNotebook,isValidNotebookFileName,notebookWorkspacePath} from "./notebook-workspace.js";
 
 const root=dirname(fileURLToPath(import.meta.url));
 const dataDirectory=process.env.LOCALAPPDATA||process.env.XDG_DATA_HOME||join(process.env.HOME||root,".local","share");
@@ -17,6 +19,7 @@ const practiceDirectory=join(dataDirectory,"DegreeStudyManager","practice");
 const practiceSessions=new Map();
 const practiceJobs=new Map();
 const notebookKernels=new Map();
+const notebookTerminalSessions=new Map();
 const maxPracticeOutput=1024*1024;
 const maxNotebookUploadBytes=25*1024*1024;
 const jupyterBridgePath=resolve(root,"jupyter-bridge.py");
@@ -26,19 +29,31 @@ mkdirSync(dirname(databasePath),{recursive:true});
 const database=new Database(databasePath);
 database.pragma("journal_mode = WAL");
 database.pragma("synchronous = FULL");
-database.exec("CREATE TABLE IF NOT EXISTS records (collection TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (collection, id)) WITHOUT ROWID");
+database.exec("CREATE TABLE IF NOT EXISTS records (collection TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY (collection, id)) WITHOUT ROWID; CREATE TABLE IF NOT EXISTS record_summaries (collection TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, payload_bytes INTEGER NOT NULL, PRIMARY KEY (collection, id)) WITHOUT ROWID");
 const getRecords=database.prepare("SELECT collection, payload FROM records ORDER BY collection, id");
 const upsertRecord=database.prepare("INSERT INTO records (collection, id, payload) VALUES (?, ?, ?) ON CONFLICT(collection, id) DO UPDATE SET payload = excluded.payload");
 const deleteRecord=database.prepare("DELETE FROM records WHERE collection = ? AND id = ?");
 const clearRecords=database.prepare("DELETE FROM records");
+const upsertSummary=database.prepare("INSERT INTO record_summaries (collection, id, payload, payload_bytes) VALUES (?, ?, ?, ?) ON CONFLICT(collection, id) DO UPDATE SET payload = excluded.payload, payload_bytes = excluded.payload_bytes");
+const deleteSummary=database.prepare("DELETE FROM record_summaries WHERE collection = ? AND id = ?");
+const clearSummaries=database.prepare("DELETE FROM record_summaries");
+function saveRecord(collection,record){
+ const payload=JSON.stringify(record);
+ const summary=collection==="notes"
+  ?JSON.stringify(Object.fromEntries(Object.entries(record).filter(([key])=>!["dataUrl","text","cells"].includes(key))))
+  :payload;
+ upsertRecord.run(collection,record.id,payload);
+ upsertSummary.run(collection,record.id,summary,Buffer.byteLength(payload));
+}
 const replaceAll=database.transaction(data=>{
  clearRecords.run();
- for(const collection of collections)for(const record of data[collection])upsertRecord.run(collection,record.id,JSON.stringify(record));
+ clearSummaries.run();
+ for(const collection of collections)for(const record of data[collection])saveRecord(collection,record);
 });
 const applyChanges=database.transaction(changes=>{
  for(const collection of collections){
-  for(const id of changes.delete[collection])deleteRecord.run(collection,id);
-  for(const record of changes.upsert[collection])upsertRecord.run(collection,record.id,JSON.stringify(record));
+  for(const id of changes.delete[collection]){deleteRecord.run(collection,id);deleteSummary.run(collection,id)}
+  for(const record of changes.upsert[collection])saveRecord(collection,record);
  }
 });
 
@@ -54,10 +69,22 @@ function validateChanges(changes){return changes&&typeof changes==="object"&&cha
 function readDatabase(){const data=Object.fromEntries(collections.map(collection=>[collection,[]]));for(const row of getRecords.all())data[row.collection].push(JSON.parse(row.payload));return data}
 function isLocalOrigin(request){const origin=request.headers.origin;if(!origin)return true;try{return["localhost","127.0.0.1","[::1]"].includes(new URL(origin).hostname)}catch{return false}}
 function getPracticeSession(id){if(typeof id!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))throw Object.assign(new Error("The practice session id is invalid."),{status:400});let session=practiceSessions.get(id);if(!session){const directory=join(practiceDirectory,id);mkdirSync(directory,{recursive:true});session={directory,cwd:directory};practiceSessions.set(id,session)}return session}
+function getNotebookWorkspace(sessionId,notebookId){
+ const directory=notebookWorkspacePath(practiceDirectory,sessionId,notebookId);
+ mkdirSync(directory,{recursive:true});
+ return{directory,cwd:directory}
+}
+function getNotebookTerminalSession(sessionId,notebookId){
+ const key=notebookKey(sessionId,notebookId);
+ let session=notebookTerminalSessions.get(key);
+ if(!session){const workspace=getNotebookWorkspace(sessionId,notebookId);session={directory:workspace.directory,cwd:workspace.cwd,activeJobId:null};notebookTerminalSessions.set(key,session)}
+ return session
+}
 function quotePowerShell(value){return`'${value.replace(/'/g,"''")}'`}
 function isValidPracticeFileName(fileName){return typeof fileName==="string"&&fileName.length>0&&fileName.length<=255&&!/[<>:"/\\|?*\u0000-\u001f]/.test(fileName)&&fileName!=="."&&fileName!==".."&&!!extname(fileName)}
 function isValidNotebookUploadName(fileName){return typeof fileName==="string"&&fileName.length>0&&fileName.length<=180&&!/[<>:"/\\|?*\u0000-\u001f]/.test(fileName)&&fileName!=="."&&fileName!==".."&&!/[. ]$/.test(fileName)&&!/^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(fileName)}
 function notebookUploadsPath(session){return join(session.directory,".notebook-uploads.json")}
+function notebookFileContentType(fileName){return{".avif":"image/avif",".gif":"image/gif",".jpeg":"image/jpeg",".jpg":"image/jpeg",".png":"image/png",".svg":"image/svg+xml",".webp":"image/webp",".bmp":"image/bmp",".txt":"text/plain; charset=utf-8",".csv":"text/csv; charset=utf-8"}[extname(fileName).toLowerCase()]||"application/octet-stream"}
 function readNotebookUploadManifest(session){
  const manifestPath=notebookUploadsPath(session);
  let manifest=[];
@@ -103,8 +130,61 @@ function discoverJupyterRuntime(){
  let response;
  try{response=JSON.parse(result.stdout)}catch{throw Object.assign(new Error("Jupyter returned an invalid kernel list."),{status:503})}
  if(!Array.isArray(response.kernels))throw Object.assign(new Error("Jupyter did not return a kernel list."),{status:503});
- jupyterRuntimeCache={pythonPath,kernels:response.kernels};
+ jupyterRuntimeCache=createJupyterRuntime({pythonPath,jupyterPath,kernels:response.kernels});
  return jupyterRuntimeCache
+}
+function discoverAlacritty(){
+ const localNotebookBuild=join(dataDirectory,"DegreeStudyManager","Alacritty","alacritty.exe");
+ const configuredPath=process.env.DEGREE_STUDY_ALACRITTY_PATH;
+ const candidates=[configuredPath,localNotebookBuild,...(process.env.PATH||"").split(delimiter).filter(Boolean).map(directory=>join(directory.replace(/^"|"$/g,""),"alacritty.exe"))].filter(Boolean);
+ const where=spawnSync("where.exe",["alacritty.exe"],{encoding:"utf8",windowsHide:true});
+ if(!where.error&&where.status===0)candidates.push(...where.stdout.split(/\r?\n/).filter(Boolean));
+ const executable=findAlacrittyWithNotebook(candidates,existsSync);
+ if(!executable){
+  const found=candidates.find(existsSync);
+  const detail=found?` Found ${found}, but its matching alacritty-notebook.exe is missing.`:" Alacritty was not found.";
+  throw Object.assign(new Error(`${detail} Install the matching Alacritty and notebook companion together, or set DEGREE_STUDY_ALACRITTY_PATH to their directory's alacritty.exe.`),{status:503});
+ }
+ return executable
+}
+function openNotebookInAlacritty(sessionId,notebookId,fileName,notebook){
+ if(!isValidNotebookUploadName(fileName)||!isValidNotebookFileName(fileName))throw Object.assign(new Error("Enter a valid notebook filename ending in .ipynb."),{status:400});
+ if(!notebook||notebook.nbformat!==4||!Array.isArray(notebook.cells))throw Object.assign(new Error("The notebook export is invalid."),{status:400});
+ const serialized=JSON.stringify(notebook);
+ if(Buffer.byteLength(serialized)>100*1024*1024)throw Object.assign(new Error("Notebook exports must be 100 MB or smaller to open in Alacritty."),{status:413});
+ const alacrittyPath=discoverAlacritty();
+ const workspace=saveNotebookWorkspaceFile(sessionId,notebookId,fileName,notebook);
+ const notebookPath=workspace.notebookPath;
+ const notebookExecutable=join(dirname(alacrittyPath),"alacritty-notebook.exe");
+ const command=buildNotebookTerminalCommand(notebookExecutable,notebookPath);
+ const powershell=join(process.env.SystemRoot||"C:\\Windows","System32","WindowsPowerShell","v1.0","powershell.exe");
+ return new Promise((resolveOpen,rejectOpen)=>{
+  let child;
+  try{
+   child=spawn(alacrittyPath,["--working-directory",workspace.directory,"--command",powershell,"-NoExit","-Command",command],{detached:true,stdio:"ignore",windowsHide:false});
+  }catch(error){
+   rejectOpen(Object.assign(new Error(`Unable to start Alacritty: ${error.message}`),{status:500}));
+   return
+  }
+  child.once("error",error=>rejectOpen(Object.assign(new Error(`Unable to start Alacritty: ${error.message}`),{status:500})));
+  child.once("spawn",()=>{child.unref();resolveOpen({ok:true,fileName,cwd:workspace.directory,notebookPath,alacrittyPath,command})})
+ })
+}
+function saveNotebookWorkspaceFile(sessionId,notebookId,fileName,notebook){
+ if(!isValidNotebookUploadName(fileName)||!isValidNotebookFileName(fileName))throw Object.assign(new Error("Enter a valid notebook filename ending in .ipynb."),{status:400});
+ if(!notebook||notebook.nbformat!==4||!Array.isArray(notebook.cells))throw Object.assign(new Error("The notebook export is invalid."),{status:400});
+ const serialized=JSON.stringify(notebook,null,2);
+ if(Buffer.byteLength(serialized)>100*1024*1024)throw Object.assign(new Error("Notebook exports must be 100 MB or smaller."),{status:413});
+ const workspace=getNotebookWorkspace(sessionId,notebookId);
+ const notebookPath=join(workspace.directory,fileName),temporaryPath=join(workspace.directory,`.${randomUUID()}.tmp`);
+ try{
+  writeFileSync(temporaryPath,serialized,{encoding:"utf8",flag:"wx"});
+  renameSync(temporaryPath,notebookPath);
+ }catch(error){
+  try{if(existsSync(temporaryPath))unlinkSync(temporaryPath)}catch{}
+  throw Object.assign(new Error(`Unable to save ${fileName} to this notebook workspace: ${error.message}`),{status:500});
+ }
+ return{directory:workspace.directory,notebookPath,modifiedAt:statSync(notebookPath).mtimeMs}
 }
 function notebookKey(sessionId,notebookId){return`${sessionId}:${notebookId}`}
 function validateNotebookIds(body){
@@ -124,7 +204,7 @@ function startNotebookKernel(sessionId,notebookId,kernelName,ownerId){
  const existing=notebookKernels.get(key);
  if(existing?.kernelName===kernelName&&existing.ownerId===ownerId&&existing.ready)return Promise.resolve(existing);
  if(existing)stopNotebookKernel(key);
- const workspace=getPracticeSession(sessionId),child=spawn(runtime.pythonPath,["-u",jupyterBridgePath,kernelName,workspace.directory],{cwd:workspace.directory,windowsHide:true,stdio:["pipe","pipe","pipe"]});
+ const workspace=getNotebookWorkspace(sessionId,notebookId),child=spawn(runtime.pythonPath,["-u",jupyterBridgePath,kernelName,workspace.directory],{cwd:workspace.directory,windowsHide:true,stdio:["pipe","pipe","pipe"]});
  const bridge={child,kernelName,ownerId,ready:false,buffer:"",stderr:"",jobs:new Map()};
  notebookKernels.set(key,bridge);
  return new Promise((resolveReady,rejectReady)=>{
@@ -145,7 +225,10 @@ function startNotebookKernel(sessionId,notebookId,kernelName,ownerId){
     else if(event.event==="input_request")job.inputRequest=event.prompt;
     else if(event.event==="input_sent")job.inputRequest=null;
     else if(event.event==="execution_finished"){job.done=true;job.ok=event.ok;job.executionCount=event.executionCount}
-    else if(event.event==="request_error"){job.error=event.message;job.done=true;job.ok=false}
+    else if(event.event==="inspection_finished"){job.done=true;job.ok=true;job.inspection={found:event.found===true,text:typeof event.text==="string"?event.text:""};setTimeout(()=>bridge.jobs.delete(job.id),60_000).unref()}
+    else if(event.event==="completion_finished"){job.done=true;job.ok=true;job.completion={matches:Array.isArray(event.matches)?event.matches.filter(match=>typeof match==="string"):[],cursorStart:event.cursorStart,cursorEnd:event.cursorEnd,metadata:event.metadata&&typeof event.metadata==="object"?event.metadata:{}};setTimeout(()=>bridge.jobs.delete(job.id),60_000).unref()}
+    else if(event.event==="validation_finished"){job.done=true;job.ok=true;job.validation=Array.isArray(event.diagnostics)?event.diagnostics:[];setTimeout(()=>bridge.jobs.delete(job.id),60_000).unref()}
+    else if(event.event==="request_error"){job.error=event.message;job.done=true;job.ok=false;if(job.kind==="inspect"||job.kind==="complete"||job.kind==="validate")setTimeout(()=>bridge.jobs.delete(job.id),60_000).unref()}
    }
   });
   child.stderr.on("data",chunk=>{bridge.stderr=(bridge.stderr+chunk.toString("utf8")).slice(-5000)});
@@ -215,7 +298,7 @@ function serveStatic(pathname,response){
  createReadStream(file).pipe(response);
 }
 
-createServer(async(request,response)=>{
+async function handleRequest(request,response){
  try{
   const url=new URL(request.url,"http://localhost");
   if(url.pathname==="/api/health"&&request.method==="GET")return sendJson(response,200,{ok:true});
@@ -245,14 +328,45 @@ createServer(async(request,response)=>{
    const filePath=join(directory,safeName);
    try{mkdirSync(directory,{recursive:true});writeFileSync(filePath,content,{flag:"wx"})}
    catch{return sendJson(response,500,{error:"Unable to prepare a temporary copy of this file."})}
-   await new Promise((resolveSpawn,rejectSpawn)=>{
-    const rundll32Path=join(process.env.SystemRoot||"C:\\Windows","System32","rundll32.exe");
-    const child=spawn(rundll32Path,["shell32.dll,OpenAs_RunDLL",filePath],{detached:true,stdio:"ignore",windowsHide:false});
-    child.once("error",()=>rejectSpawn(Object.assign(new Error("Windows could not start the Open with dialog."),{status:500})));
-    child.once("spawn",resolveSpawn);
-    child.unref();
+   const command=`$source = @'
+using System;
+using System.Runtime.InteropServices;
+public static class DegreeStudyManagerOpenWith {
+ [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+ private struct OpenAsInfo {
+  [MarshalAs(UnmanagedType.LPWStr)] public string FilePath;
+  [MarshalAs(UnmanagedType.LPWStr)] public string ClassName;
+  public uint Flags;
+ }
+ [DllImport("shell32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+ private static extern int SHOpenWithDialog(IntPtr parent, ref OpenAsInfo info);
+ [DllImport("user32.dll")]
+ private static extern IntPtr GetForegroundWindow();
+ public static int Show(string filePath) {
+  var info = new OpenAsInfo { FilePath = filePath, Flags = 0x5 };
+  return SHOpenWithDialog(GetForegroundWindow(), ref info);
+ }
+}
+'@
+Add-Type -TypeDefinition $source -ErrorAction Stop
+$result = [DegreeStudyManagerOpenWith]::Show(${quotePowerShell(filePath)})
+if ($result -eq 0) { exit 0 }
+if ($result -eq -2147023673) { exit 2 }
+[Console]::Error.WriteLine(('Windows app chooser failed (HRESULT 0x{0:X8}).' -f $result))
+exit 1`;
+   const openResult=await new Promise((resolveOpen,rejectOpen)=>{
+    const executable=join(process.env.SystemRoot||"C:\\Windows","System32","WindowsPowerShell","v1.0","powershell.exe");
+    let errorOutput="";
+    const child=spawn(executable,["-NoLogo","-NoProfile","-NonInteractive","-Command",command],{stdio:["ignore","ignore","pipe"],windowsHide:true});
+    child.stderr.on("data",chunk=>{if(errorOutput.length<4096)errorOutput+=chunk.toString("utf8").slice(0,4096-errorOutput.length)});
+    child.once("error",error=>rejectOpen(Object.assign(new Error(`Unable to start Windows file opening: ${error.message}`),{status:500})));
+    child.once("close",(code,signal)=>{
+     if(code===0)return resolveOpen({ok:true});
+     if(code===2)return resolveOpen({ok:true,cancelled:true});
+     rejectOpen(Object.assign(new Error(errorOutput.trim()||`Windows could not open this file with the chooser${signal?` (${signal})`:""}.`),{status:500}));
+    });
    });
-   return sendJson(response,202,{ok:true});
+   return sendJson(response,200,openResult);
   }
   if(url.pathname==="/api/notebook"&&request.method==="POST"){
    if(process.platform!=="win32")return sendJson(response,501,{error:"Local Jupyter notebooks are available when running the app on Windows."});
@@ -260,24 +374,81 @@ createServer(async(request,response)=>{
    const body=await readJson(request);
    if(body.action==="kernels"){
     const runtime=discoverJupyterRuntime();
-    return sendJson(response,200,{ok:true,notebookApiVersion:3,kernels:runtime.kernels});
+    return sendJson(response,200,{ok:true,notebookApiVersion:8,kernels:runtime.kernels});
    }
    validateNotebookIds(body);
    const key=notebookKey(body.sessionId,body.notebookId);
+   if(body.action==="terminal-init"){
+    const session=getNotebookTerminalSession(body.sessionId,body.notebookId);
+    return sendJson(response,200,{ok:true,terminalApiVersion:1,cwd:session.cwd});
+   }
+   if(body.action==="terminal-command"){
+    if(typeof body.command!=="string"||!body.command.trim()||body.command.length>10000)return sendJson(response,400,{error:"Enter a PowerShell command of 10,000 characters or fewer."});
+    const session=getNotebookTerminalSession(body.sessionId,body.notebookId);
+    const runningJob=session.activeJobId&&practiceJobs.get(session.activeJobId);
+    if(runningJob&&!runningJob.done)return sendJson(response,409,{error:"A PowerShell command is already running in this notebook terminal."});
+    const job=startPracticeProcess(body.command,session,`notebook:${key}`);
+    return sendJson(response,202,{ok:true,jobId:job.id,cwd:session.cwd});
+   }
+   if(body.action==="terminal-poll"||body.action==="terminal-input"){
+    const session=getNotebookTerminalSession(body.sessionId,body.notebookId),job=practiceJobs.get(body.jobId);
+    if(!job||job.sessionId!==`notebook:${key}`)return sendJson(response,404,{error:"This PowerShell command is no longer available."});
+    if(body.action==="terminal-input"){
+     if(job.done)return sendJson(response,409,{error:"The PowerShell command has already finished."});
+     if(typeof body.input!=="string"||body.input.length>10000)return sendJson(response,400,{error:"Terminal input must be 10,000 characters or fewer."});
+     try{job.child.stdin.write(`${body.input}\n`)}catch{return sendJson(response,409,{error:"The PowerShell command is no longer accepting input."})}
+     return sendJson(response,200,{ok:true});
+    }
+    const result=readPracticeJob(job);
+    if(result.done&&result.timedOut)result.output+="\n[Command timed out after 30 seconds.]";
+    if(result.done&&result.truncated)result.output+="\n[Output truncated after 1 MB.]";
+    return sendJson(response,200,{...result,cwd:session.cwd});
+   }
    if(body.action==="list-files"){
-    const session=getPracticeSession(body.sessionId);
-    return sendJson(response,200,{ok:true,files:readNotebookUploads(session)});
+    const workspace=getNotebookWorkspace(body.sessionId,body.notebookId);
+    return sendJson(response,200,{ok:true,files:readNotebookUploads(workspace)});
+   }
+   if(body.action==="open-terminal"){
+    try{
+     const result=await openNotebookInAlacritty(body.sessionId,body.notebookId,body.fileName,body.notebook);
+     return sendJson(response,200,result);
+    }catch(error){
+     return sendJson(response,error.status||500,{error:error instanceof Error?error.message:"Unable to open the notebook terminal."});
+    }
+   }
+   if(body.action==="save-workspace"){
+    try{
+     const result=saveNotebookWorkspaceFile(body.sessionId,body.notebookId,body.fileName,body.notebook);
+     return sendJson(response,200,{ok:true,fileName:body.fileName,notebookPath:result.notebookPath,modifiedAt:result.modifiedAt});
+    }catch(error){
+     return sendJson(response,error.status||500,{error:error instanceof Error?error.message:"Unable to save the notebook workspace file."});
+    }
+   }
+   if(body.action==="load-workspace"){
+    if(!isValidNotebookUploadName(body.fileName)||!isValidNotebookFileName(body.fileName))return sendJson(response,400,{error:"Enter a valid notebook filename ending in .ipynb."});
+    const workspace=getNotebookWorkspace(body.sessionId,body.notebookId),notebookPath=join(workspace.directory,body.fileName);
+    if(!existsSync(notebookPath))return sendJson(response,200,{ok:true,found:false});
+    const fileStat=statSync(notebookPath);
+    if(!fileStat.isFile())return sendJson(response,400,{error:"The saved notebook workspace path is not a file."});
+    if(fileStat.size>100*1024*1024)return sendJson(response,413,{error:"Notebook files must be 100 MB or smaller."});
+    let notebook;
+    try{notebook=JSON.parse(readFileSync(notebookPath,"utf8"))}
+    catch{return sendJson(response,400,{error:"The saved Alacritty notebook is not valid JSON."})}
+    if(!notebook||notebook.nbformat!==4||!Array.isArray(notebook.cells))return sendJson(response,400,{error:"The saved Alacritty file is not a valid Jupyter notebook."});
+    const updatedAt=Date.parse(body.notebookUpdatedAt);
+    const changed=body.force===true||!Number.isFinite(updatedAt)||fileStat.mtimeMs>updatedAt;
+    return sendJson(response,200,{ok:true,found:true,changed,modifiedAt:fileStat.mtimeMs,fileName:body.fileName,notebook:changed?notebook:undefined});
    }
    if(body.action==="start"){
     if(typeof body.kernelName!=="string"||!body.kernelName)return sendJson(response,400,{error:"Select an installed Jupyter kernel."});
     const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     if(typeof body.ownerId!=="string"||!uuid.test(body.ownerId))return sendJson(response,400,{error:"The notebook kernel owner id is invalid."});
     const bridge=await startNotebookKernel(body.sessionId,body.notebookId,body.kernelName,body.ownerId);
-    return sendJson(response,200,{ok:true,kernelName:bridge.kernelName,cwd:getPracticeSession(body.sessionId).cwd});
+    return sendJson(response,200,{ok:true,kernelName:bridge.kernelName,cwd:getNotebookWorkspace(body.sessionId,body.notebookId).cwd});
    }
    if(body.action==="delete-file"){
     if(!isValidNotebookUploadName(body.fileName))return sendJson(response,400,{error:"Choose a valid uploaded filename."});
-    const session=getPracticeSession(body.sessionId),manifest=readNotebookUploadManifest(session),files=readNotebookUploads(session);
+    const session=getNotebookWorkspace(body.sessionId,body.notebookId),manifest=readNotebookUploadManifest(session),files=readNotebookUploads(session);
     const file=files.find(item=>item.fileName===body.fileName);
     if(!file)return sendJson(response,404,{error:"That uploaded file is no longer available."});
     const filePath=join(session.directory,file.fileName);
@@ -300,7 +471,7 @@ createServer(async(request,response)=>{
     if(!match||match[1].length%4!==0||match[1].length>Math.ceil(maxNotebookUploadBytes/3)*4)return sendJson(response,400,{error:"File data is invalid or exceeds 25 MB."});
     const content=Buffer.from(match[1],"base64");
     if(content.length>maxNotebookUploadBytes)return sendJson(response,400,{error:"Files must be 25 MB or smaller."});
-    const session=getPracticeSession(body.sessionId);
+    const session=getNotebookWorkspace(body.sessionId,body.notebookId);
     if(readdirSync(session.directory).some(name=>name.toLowerCase()===body.fileName.toLowerCase()))return sendJson(response,409,{error:`A file named "${body.fileName}" already exists in this notebook workspace. Duplicate upload rejected.`});
     const files=readNotebookUploads(session),filePath=join(session.directory,body.fileName),nextFiles=[...files,{fileName:body.fileName,size:content.length}];
     try{writeFileSync(filePath,content,{flag:"wx"})}
@@ -315,10 +486,35 @@ createServer(async(request,response)=>{
    }
    if(body.action==="execute"){
     if(typeof body.code!=="string"||body.code.length>2*1024*1024)return sendJson(response,400,{error:"Notebook cells must be 2 MB or smaller."});
-    if([...bridge.jobs.values()].some(job=>!job.done))return sendJson(response,409,{error:"A notebook cell is already running in this kernel."});
-    const job={id:randomUUID(),outputs:[],done:false,ok:false,executionCount:null,inputRequest:null,error:null};
+    if([...bridge.jobs.values()].some(job=>job.kind==="execute"&&!job.done))return sendJson(response,409,{error:"A notebook cell is already running in this kernel."});
+    const job={id:randomUUID(),kind:"execute",outputs:[],done:false,ok:false,executionCount:null,inputRequest:null,error:null};
     bridge.jobs.set(job.id,job);
     bridge.child.stdin.write(`${JSON.stringify({action:"execute",requestId:job.id,code:body.code})}\n`);
+    return sendJson(response,202,{ok:true,jobId:job.id});
+   }
+   if(body.action==="inspect"){
+    if(typeof body.code!=="string"||body.code.length>2*1024*1024)return sendJson(response,400,{error:"Notebook cells must be 2 MB or smaller."});
+    if(!Number.isInteger(body.cursorPos)||body.cursorPos<0||body.cursorPos>body.code.length)return sendJson(response,400,{error:"The documentation cursor position is invalid."});
+    if([...bridge.jobs.values()].some(job=>job.kind==="execute"&&!job.done))return sendJson(response,409,{error:"Wait for the running notebook cell to finish before requesting documentation."});
+    const job={id:randomUUID(),kind:"inspect",outputs:[],done:false,ok:false,executionCount:null,inputRequest:null,error:null,inspection:null};
+    bridge.jobs.set(job.id,job);
+    bridge.child.stdin.write(`${JSON.stringify({action:"inspect",requestId:job.id,code:body.code,cursorPos:body.cursorPos})}\n`);
+    return sendJson(response,202,{ok:true,jobId:job.id});
+   }
+   if(body.action==="complete"){
+    if(typeof body.code!=="string"||body.code.length>2*1024*1024)return sendJson(response,400,{error:"Notebook cells must be 2 MB or smaller."});
+    if(!Number.isInteger(body.cursorPos)||body.cursorPos<0||body.cursorPos>Array.from(body.code).length)return sendJson(response,400,{error:"The completion cursor position is invalid."});
+    if([...bridge.jobs.values()].some(job=>job.kind==="execute"&&!job.done))return sendJson(response,409,{error:"Wait for the running notebook cell to finish before requesting completions."});
+    const job={id:randomUUID(),kind:"complete",outputs:[],done:false,ok:false,executionCount:null,inputRequest:null,error:null,completion:null};
+    bridge.jobs.set(job.id,job);
+    bridge.child.stdin.write(`${JSON.stringify({action:"complete",requestId:job.id,code:body.code,cursorPos:body.cursorPos})}\n`);
+    return sendJson(response,202,{ok:true,jobId:job.id});
+   }
+   if(body.action==="validate"){
+    if(typeof body.code!=="string"||body.code.length>2*1024*1024)return sendJson(response,400,{error:"Notebook cells must be 2 MB or smaller."});
+    const job={id:randomUUID(),kind:"validate",outputs:[],done:false,ok:false,executionCount:null,inputRequest:null,error:null,validation:[]};
+    bridge.jobs.set(job.id,job);
+    bridge.child.stdin.write(`${JSON.stringify({action:"validate",requestId:job.id,code:body.code})}\n`);
     return sendJson(response,202,{ok:true,jobId:job.id});
    }
    if(body.action==="poll"||body.action==="input"){
@@ -334,9 +530,22 @@ createServer(async(request,response)=>{
     }
     const cursor=Number.isInteger(body.cursor)&&body.cursor>=0?body.cursor:0;
     const outputs=job.outputs.slice(cursor);
-    return sendJson(response,200,{ok:true,outputs,nextCursor:cursor+outputs.length,done:job.done,success:job.ok,executionCount:job.executionCount,inputRequest:job.inputRequest,error:job.error});
+    return sendJson(response,200,{ok:true,outputs,nextCursor:cursor+outputs.length,done:job.done,success:job.ok,executionCount:job.executionCount,inputRequest:job.inputRequest,error:job.error,inspection:job.inspection,completion:job.completion,validation:job.validation});
    }
    return sendJson(response,400,{error:"Choose a valid notebook action."});
+  }
+  if(url.pathname==="/api/notebook-file"&&request.method==="GET"){
+   if(process.platform!=="win32")return sendJson(response,501,{error:"Local Jupyter notebooks are available when running the app on Windows."});
+   if(!isLocalOrigin(request))return sendJson(response,403,{error:"Notebook files can only be read from a local app page."});
+   const sessionId=url.searchParams.get("sessionId"),notebookId=url.searchParams.get("notebookId"),fileName=url.searchParams.get("fileName");
+   const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+   if(!uuid.test(sessionId||"")||!uuid.test(notebookId||"")||!isValidNotebookUploadName(fileName))return sendJson(response,400,{error:"The notebook file details are invalid."});
+   const session=getNotebookWorkspace(sessionId,notebookId),file=readNotebookUploads(session).find(item=>item.fileName.toLowerCase()===fileName.toLowerCase());
+   if(!file)return sendJson(response,404,{error:"That uploaded notebook file is no longer available."});
+   const filePath=join(session.directory,file.fileName);
+   response.writeHead(200,{"Content-Type":notebookFileContentType(file.fileName),"Content-Length":String(file.size),"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"});
+   createReadStream(filePath).pipe(response);
+   return;
   }
   if(url.pathname==="/api/practice"&&request.method==="POST"){
    if(process.platform!=="win32")return sendJson(response,501,{error:"The local PowerShell practice terminal is available only on Windows."});
@@ -391,4 +600,61 @@ createServer(async(request,response)=>{
   if(!response.headersSent)sendJson(response,error.status||500,{error:error.status?error.message:"Unable to save or read the local SQLite database."});
   else response.destroy(error);
  }
-}).listen(port,"127.0.0.1",()=>console.log(`Degree Study Manager is available at http://127.0.0.1:${port}\nSQLite database: ${databasePath}`));
+}
+
+async function handleDesktopIpcRequest(message){
+ const request=Readable.from(message.body===undefined?[]:[JSON.stringify(message.body)]);
+ request.method=message.method;
+ request.url=message.path;
+ request.headers={origin:"http://localhost"};
+ const chunks=[];
+ const response=new Writable({
+  write(chunk,encoding,callback){chunks.push(Buffer.from(chunk));callback()}
+ });
+ let streamError=null;
+ const destroy=response.destroy.bind(response);
+ response.destroy=error=>{if(error)streamError=error;return destroy(error)};
+ response.statusCode=200;
+ response.responseHeaders={};
+ response.headersSent=false;
+ response.writeHead=(status,headers={})=>{response.statusCode=status;response.responseHeaders=headers;response.headersSent=true;return response};
+ response.on("error",error=>{streamError=error});
+ await handleRequest(request,response);
+ if(!response.writableFinished&&!response.destroyed)await new Promise(resolve=>response.once("finish",resolve));
+ if(streamError)throw streamError;
+ const body=Buffer.concat(chunks);
+ const responseBody={
+  requestId:message.requestId,
+  status:response.statusCode,
+  headers:response.responseHeaders
+ };
+ if(response.responseHeaders["Content-Type"]&&response.responseHeaders["Content-Type"]!=="application/json; charset=utf-8"){
+  responseBody.bodyBase64=body.toString("base64");
+ }else{
+  responseBody.body=body.toString("utf8");
+ }
+ return responseBody
+}
+
+if(process.argv.includes("--desktop-ipc")){
+ let input="";
+ process.stdin.setEncoding("utf8");
+ process.stdin.on("data",chunk=>{
+  input+=chunk;
+  let newline;
+  while((newline=input.indexOf("\n"))>=0){
+   const line=input.slice(0,newline);
+   input=input.slice(newline+1);
+   if(!line.trim())continue;
+   let message;
+   try{message=JSON.parse(line)}catch{process.stderr.write("Received an invalid desktop IPC request.\n");continue}
+   void handleDesktopIpcRequest(message).then(result=>{
+    process.stdout.write(`${JSON.stringify(result)}\n`)
+   }).catch(error=>{
+    process.stdout.write(`${JSON.stringify({requestId:message.requestId,status:500,body:JSON.stringify({error:error instanceof Error?error.message:"Desktop request failed."})})}\n`)
+   })
+  }
+ });
+}else{
+ createServer(handleRequest).listen(port,"127.0.0.1",()=>console.log(`Degree Study Manager is available at http://127.0.0.1:${port}\nSQLite database: ${databasePath}`))
+}

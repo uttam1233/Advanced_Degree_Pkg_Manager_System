@@ -1,0 +1,34 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Degree Study Manager",
+  "version": "1.0.14",
+  "identifier": "com.degreestudymanager.desktop",
+  "build": {
+    "beforeDevCommand": "npm run build",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": []
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "resources": {
+      "../server.js": "runtime/server.js",
+      "../notebook-workspace.js": "runtime/notebook-workspace.js",
+      "../jupyter-bridge.py": "runtime/jupyter-bridge.py",
+      "../dist/": "runtime/dist/",
+      "../node_modules/better-sqlite3/": "runtime/node_modules/better-sqlite3/",
+      "../node_modules/node-addon-api/": "runtime/node_modules/node-addon-api/",
+      "runtime/node.exe": "runtime/node.exe",
+      "runtime/package.json": "runtime/package.json"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerHooks": "nsis/installer-hooks.nsh"
+      }
+    }
+  }
+}
