@@ -1,0 +1,7 @@
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/runtime/node.exe

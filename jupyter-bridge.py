@@ -1,5 +1,8 @@
+import ast
+import codeop
 import json
 import queue
+import re
 import shutil
 import sys
 import threading
@@ -12,11 +15,24 @@ from jupyter_client.kernelspec import KernelSpecManager
 write_lock = threading.Lock()
 kernel_client = None
 active_execution = None
+ansi_escape = re.compile(
+    r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)|[@-_])"
+)
+control_characters = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 def emit(message):
+    def clean(value):
+        if isinstance(value, str):
+            return control_characters.sub("", ansi_escape.sub("", value))
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        if isinstance(value, dict):
+            return {key: clean(item) for key, item in value.items()}
+        return value
+
     with write_lock:
-        sys.stdout.write(json.dumps(message, ensure_ascii=False) + "\n")
+        sys.stdout.write(json.dumps(clean(message), ensure_ascii=False) + "\n")
         sys.stdout.flush()
 
 
@@ -126,6 +142,108 @@ def execute_code(request):
         active_execution = None
 
 
+def inspect_code(request):
+    request_id = request["requestId"]
+    try:
+        message_id = kernel_client.inspect(
+            request["code"],
+            request["cursorPos"],
+            detail_level=1,
+        )
+        while True:
+            message = kernel_client.get_shell_msg(timeout=5)
+            if message.get("parent_header", {}).get("msg_id") == message_id:
+                break
+
+        content = message.get("content", {})
+        data = content.get("data", {})
+        text = data.get("text/plain", "")
+        if isinstance(text, list):
+            text = "".join(text)
+        emit(
+            {
+                "event": "inspection_finished",
+                "requestId": request_id,
+                "found": bool(content.get("found")),
+                "text": text[:20000] if isinstance(text, str) else "",
+            }
+        )
+    except Exception as error:
+        emit({"event": "request_error", "requestId": request_id, "message": str(error)})
+
+
+def complete_code(request):
+    request_id = request["requestId"]
+    try:
+        message_id = kernel_client.complete(
+            request["code"],
+            request["cursorPos"],
+        )
+        while True:
+            message = kernel_client.get_shell_msg(timeout=5)
+            if message.get("parent_header", {}).get("msg_id") == message_id:
+                break
+
+        content = message.get("content", {})
+        emit(
+            {
+                "event": "completion_finished",
+                "requestId": request_id,
+                "matches": content.get("matches", []),
+                "cursorStart": content.get("cursor_start", request["cursorPos"]),
+                "cursorEnd": content.get("cursor_end", request["cursorPos"]),
+                "metadata": content.get("metadata", {}),
+            }
+        )
+    except Exception as error:
+        emit({"event": "request_error", "requestId": request_id, "message": str(error)})
+
+
+def validate_code(request):
+    source = request["code"]
+    lines = source.splitlines(keepends=True)
+    first_code_line = next((line.lstrip() for line in lines if line.strip()), "")
+    if first_code_line.startswith("%%"):
+        emit({"event": "validation_finished", "requestId": request["requestId"], "diagnostics": []})
+        return
+    transformed_source = "".join(
+        "\n" if line.lstrip().startswith(("%", "!")) else line for line in lines
+    )
+    try:
+        codeop.compile_command(transformed_source, "<notebook>", "exec")
+        diagnostic = None
+    except SyntaxError:
+        try:
+            compile(
+                transformed_source,
+                "<notebook>",
+                "exec",
+                flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT,
+                dont_inherit=True,
+            )
+            diagnostic = None
+        except SyntaxError as error:
+            diagnostic = {
+                "line": max(0, (error.lineno or 1) - 1),
+                "column": max(0, (error.offset or 1) - 1),
+                "message": error.msg,
+            }
+    except (OverflowError, ValueError) as error:
+        diagnostic = {
+            "line": 0,
+            "column": 0,
+            "message": str(error),
+        }
+
+    emit(
+        {
+            "event": "validation_finished",
+            "requestId": request["requestId"],
+            "diagnostics": [diagnostic] if diagnostic else [],
+        }
+    )
+
+
 def run_kernel(kernel_name, working_directory):
     global active_execution, kernel_client
     manager = KernelSpecManager()
@@ -164,6 +282,30 @@ def run_kernel(kernel_name, working_directory):
                         args=(request,),
                         daemon=True,
                     ).start()
+                elif action == "inspect":
+                    if active_execution is not None:
+                        emit(
+                            {
+                                "event": "request_error",
+                                "requestId": request.get("requestId"),
+                                "message": "Wait for the running cell to finish before requesting documentation.",
+                            }
+                        )
+                        continue
+                    inspect_code(request)
+                elif action == "complete":
+                    if active_execution is not None:
+                        emit(
+                            {
+                                "event": "request_error",
+                                "requestId": request.get("requestId"),
+                                "message": "Wait for the running notebook cell to finish before requesting completions.",
+                            }
+                        )
+                        continue
+                    complete_code(request)
+                elif action == "validate":
+                    validate_code(request)
                 elif action == "input":
                     if request.get("requestId") != active_execution:
                         emit(

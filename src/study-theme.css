@@ -47,6 +47,83 @@ select {
   min-height: 100vh;
 }
 
+.fireworks {
+  position: fixed;
+  z-index: 15;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.festive-toggle {
+  border: 1px solid rgb(255 255 255 / 24%);
+  background: linear-gradient(135deg, #55318e, #b83280);
+  color: #fff;
+  box-shadow: 0 5px 16px rgb(128 38 132 / 22%);
+}
+
+.festive-mode {
+  --ink: #edf4ff;
+  --muted: #aebbd0;
+  --line: #2c3b56;
+  --surface: rgb(17 27 47 / 94%);
+  --canvas: #080e1c;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 4%, rgb(43 65 115 / 45%), transparent 32rem),
+    radial-gradient(circle at 86% 22%, rgb(83 38 111 / 25%), transparent 28rem),
+    var(--canvas);
+}
+
+.festive-mode header {
+  background: rgb(10 17 32 / 88%);
+  color: var(--ink);
+  border-bottom-color: rgb(61 79 112 / 65%);
+}
+
+.festive-mode .brand h1,
+.festive-mode .card h2,
+.festive-mode .card h3 {
+  color: #f5f8ff;
+}
+
+.festive-mode .brand p,
+.festive-mode .card p,
+.festive-mode .resource-row small,
+.festive-mode .grow small {
+  color: var(--muted);
+}
+
+.festive-mode .nav select,
+.festive-mode .btn.outline,
+.festive-mode .control,
+.festive-mode .settings-row {
+  color: #e7eefc;
+  border-color: var(--line);
+  background: #111b30;
+}
+
+.festive-mode .btn.ghost {
+  color: #dbe7fb;
+}
+
+.festive-mode .card {
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 22%);
+}
+
+.festive-mode .hero {
+  background:
+    radial-gradient(ellipse at 86% 10%, rgb(222 73 157 / 27%), transparent 30%),
+    linear-gradient(122deg, #101d3b 0%, #21365a 58%, #3a2858 100%);
+}
+
+.festive-mode .progress {
+  background: #29364c;
+}
+
 header {
   position: sticky;
   z-index: 20;

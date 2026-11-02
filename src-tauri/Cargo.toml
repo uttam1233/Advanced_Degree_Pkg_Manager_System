@@ -1,0 +1,17 @@
+[package]
+name = "degree-study-manager"
+version = "1.0.14"
+description = "Degree Study Manager desktop app"
+authors = ["Degree Study Manager"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
