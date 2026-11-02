@@ -2,6 +2,14 @@
 
 This is the full locally runnable reconstruction of the Copilot Page.
 
+## Download for Windows
+
+[Download the latest Windows installer (.exe)](https://github.com/uttam1233/Advanced_Degree_Pkg_Manager_System/releases/latest/download/DegreeStudyManager-Setup.exe)
+
+This direct download becomes available after a Windows installer is attached to
+a GitHub Release with the exact filename `DegreeStudyManager-Setup.exe`. Until
+then, check the [Releases page](https://github.com/uttam1233/Advanced_Degree_Pkg_Manager_System/releases).
+
 ## Run as a Windows desktop app
 
 The desktop app opens its bundled UI directly and reads and writes its SQLite
